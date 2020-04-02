@@ -26,6 +26,7 @@
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
+#define PRIORITY_BATTERY 40
 
 /*
  * Some remarks:
@@ -123,6 +124,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_battery, "th_battery", 0, PRIORITY_BATTERY, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -163,7 +168,11 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
+   /* if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }*/
+    if (err = rt_task_start(&th_battery, (void(*)(void*)) & Tasks::GetBatteryLevel, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -393,6 +402,42 @@ void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
     if ((err = rt_queue_write(queue, (const void *) &msg, sizeof ((const void *) &msg), Q_NORMAL)) < 0) {
         cerr << "Write in queue failed: " << strerror(-err) << endl << flush;
         throw std::runtime_error{"Error in write in queue"};
+    }
+}
+
+void Tasks::GetBatteryLevel(void *arg)
+{
+    int rs;
+    int cpMove;
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+
+    /**************************************************************************************/
+    /* The task sendToMon starts here                                                     */
+    /**************************************************************************************/
+    
+    rt_task_set_periodic(NULL, TM_NOW, 500000000);
+    while (1) {
+        cout << "1";
+        rt_task_wait_period(NULL);
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        rs = robotStarted;
+        
+        rt_mutex_release(&mutex_robotStarted);
+        if (rs == 1) {
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+        
+            Message* battery_level = robot.Write(new Message(MessageID::MESSAGE_ROBOT_BATTERY_GET));
+            if (battery_level->CompareID(MessageID::MESSAGE_ROBOT_BATTERY_LEVEL)) 
+            {
+                monitor.Write(battery_level);
+            }
+            
+        
+            rt_mutex_release(&mutex_robot);
+        }
     }
 }
 
