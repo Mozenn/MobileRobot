@@ -149,6 +149,11 @@ private:
     void WriteInQueue(RT_QUEUE *queue, Message *msg);
     
     /**
+     * @brief Ping the robot to check com
+     */
+    void Reload(void *arg);
+    
+    /**
      * Read a message from a given queue, block if empty
      * @param queue Queue identifier
      * @return Message read

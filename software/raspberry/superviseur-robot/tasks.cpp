@@ -405,6 +405,21 @@ void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
     }
 }
 
+void Tasks::Reload(void *arg)
+{
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    rt_task_set_periodic(NULL, TM_NOW, 1000000000);
+    while(1)
+    {
+        rt_task_wait_period(NULL);
+        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+        robot.Write(new Message((MessageID.MESSAGE_ROBOT_PING)));
+        rt_mutex_release(&mutex_robot);
+    }
+}
+
 void Tasks::GetBatteryLevel(void *arg)
 {
     int rs;
