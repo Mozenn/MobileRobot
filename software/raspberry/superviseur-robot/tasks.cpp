@@ -75,7 +75,7 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_mutex_create(&mutex_cameraStarted, NULL)) {
+    if (err = rt_mutex_create(&mutex_cameraOpen, NULL)) {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -97,10 +97,6 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_sem_create(&sem_startRobot, NULL, 0, S_FIFO)) {
-        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
-        exit(EXIT_FAILURE);
-    }
-        if (err = rt_sem_create(&sem_startCamera, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -303,14 +299,14 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_move);
         }else if(msgRcv->CompareID(MESSAGE_CAM_OPEN)){
             
-            rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+            rt_mutex_acquire(&mutex_cameraOpen, TM_INFINITE);
             cameraOpen = true ; 
-            rt_mutex_release(&mutex_cameraStarted);
+            rt_mutex_release(&mutex_cameraOpen);
             
         }else if(msgRcv->CompareID(MESSAGE_CAM_CLOSE)){
-            rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+            rt_mutex_acquire(&mutex_cameraOpen, TM_INFINITE);
             cameraOpen = false ; 
-            rt_mutex_release(&mutex_cameraStarted);
+            rt_mutex_release(&mutex_cameraOpen);
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -412,7 +408,19 @@ void Tasks::MoveTask(void *arg) {
             cout << " move: " << cpMove;
             
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            robot.Write(new Message((MessageID)cpMove));
+            Message * check_error = robot.Write(new Message((MessageID)cpMove));
+            if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                counter++;
+                rt_mutex_release(&mutex_counter);
+            }
+            else {
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                if (counter > 0) {
+                    counter--;
+                }
+                rt_mutex_release(&mutex_counter);
+            }
             rt_mutex_release(&mutex_robot);
         }
         cout << endl << flush;
@@ -432,10 +440,36 @@ void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
     }
 }
 
+void Tasks::Reload(void *arg)
+{
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    rt_task_set_periodic(NULL, TM_NOW, 1000000000);
+    while(1)
+    {
+        rt_task_wait_period(NULL);
+        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+        Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_PING)));
+        rt_mutex_release(&mutex_robot);
+        if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+            rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+            counter++;
+            rt_mutex_release(&mutex_counter);
+        }
+        else {
+            rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+            if (counter > 0) {
+                counter--;
+            }
+            rt_mutex_release(&mutex_counter);
+        }
+    }
+}
+
 void Tasks::GetBatteryLevel(void *arg)
 {
     int rs;
-    int cpMove;
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     
@@ -459,10 +493,19 @@ void Tasks::GetBatteryLevel(void *arg)
             Message* battery_level = robot.Write(new Message(MessageID::MESSAGE_ROBOT_BATTERY_GET));
             if (battery_level->CompareID(MessageID::MESSAGE_ROBOT_BATTERY_LEVEL)) 
             {
-                monitor.Write(battery_level);
+                WriteInQueue(&q_messageToMon,battery_level);
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                if (counter > 0) {
+                    counter--;
+                }
+                rt_mutex_release(&mutex_counter);
+            }
+            else if (battery_level->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || battery_level->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                counter++;
+                rt_mutex_release(&mutex_counter);
             }
             
-        
             rt_mutex_release(&mutex_robot);
         }
     }
@@ -481,11 +524,11 @@ void Tasks::VisionTask(void *arg)
         
         bool openCamera ; 
         
-        rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+        rt_mutex_acquire(&mutex_cameraOpen, TM_INFINITE);
         
         openCamera = cameraOpen ; 
         
-        rt_mutex_release(&mutex_cameraStarted);
+        rt_mutex_release(&mutex_cameraOpen);
         
         // TODO : close camera if camera isOpen and openCamera is false, open camera if camera !isOpen and openCamera is true
         // continue if openCamera == camera.isOpen == true , exit if openCamera == camera.isOpen == false 

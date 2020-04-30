@@ -59,6 +59,7 @@ typedef enum {
     // Messages for camera from Supervisor to Monitor 
     MESSAGE_CAM_POSITION,
     MESSAGE_CAM_IMAGE,
+    MESSAGE_CAM_FAIL,
             
     // Messages for robot
     MESSAGE_ROBOT_PING,
