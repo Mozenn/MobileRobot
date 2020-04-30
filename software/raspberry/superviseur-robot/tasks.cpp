@@ -385,7 +385,19 @@ void Tasks::MoveTask(void *arg) {
             cout << " move: " << cpMove;
             
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            robot.Write(new Message((MessageID)cpMove));
+            Message * check_error = robot.Write(new Message((MessageID)cpMove));
+            if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                counter++;
+                rt_mutex_release(&mutex_counter);
+            }
+            else {
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                if (counter > 0) {
+                    counter--;
+                }
+                rt_mutex_release(&mutex_counter);
+            }
             rt_mutex_release(&mutex_robot);
         }
         cout << endl << flush;
@@ -432,9 +444,18 @@ void Tasks::GetBatteryLevel(void *arg)
             if (battery_level->CompareID(MessageID::MESSAGE_ROBOT_BATTERY_LEVEL)) 
             {
                 WriteInQueue(&q_messageToMon,battery_level);
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                if (counter > 0) {
+                    counter--;
+                }
+                rt_mutex_release(&mutex_counter);
+            }
+            else if (battery_level->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || battery_level->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                counter++;
+                rt_mutex_release(&mutex_counter);
             }
             
-        
             rt_mutex_release(&mutex_robot);
         }
     }
