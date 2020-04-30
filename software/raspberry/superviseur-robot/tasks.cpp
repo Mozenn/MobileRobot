@@ -27,6 +27,7 @@
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
 #define PRIORITY_BATTERY 40
+#define PRIORITY_VISION 20
 
 /*
  * Some remarks:
@@ -74,6 +75,10 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_mutex_create(&mutex_cameraStarted, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -92,6 +97,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_sem_create(&sem_startRobot, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+        if (err = rt_sem_create(&sem_startCamera, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -125,6 +134,10 @@ void Tasks::Init() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_create(&th_battery, "th_battery", 0, PRIORITY_BATTERY, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_vision, "th_vision", 0, PRIORITY_VISION, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -168,11 +181,15 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-   /* if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
+   if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }*/
+    }
     if (err = rt_task_start(&th_battery, (void(*)(void*)) & Tasks::GetBatteryLevel, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_vision, (void(*)(void*)) & Tasks::VisionTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -284,6 +301,16 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
+        }else if(msgRcv->CompareID(MESSAGE_CAM_OPEN)){
+            
+            rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+            cameraOpen = true ; 
+            rt_mutex_release(&mutex_cameraStarted);
+            
+        }else if(msgRcv->CompareID(MESSAGE_CAM_CLOSE)){
+            rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+            cameraOpen = false ; 
+            rt_mutex_release(&mutex_cameraStarted);
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -437,6 +464,45 @@ void Tasks::GetBatteryLevel(void *arg)
             
         
             rt_mutex_release(&mutex_robot);
+        }
+    }
+}
+
+void Tasks::VisionTask(void *arg)
+{
+    Camera camera ; 
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    
+    while (1) {
+        
+        bool openCamera ; 
+        
+        rt_mutex_acquire(&mutex_cameraStarted, TM_INFINITE);
+        
+        openCamera = cameraOpen ; 
+        
+        rt_mutex_release(&mutex_cameraStarted);
+        
+        // TODO : close camera if camera isOpen and openCamera is false, open camera if camera !isOpen and openCamera is true
+        // continue if openCamera == camera.isOpen == true , exit if openCamera == camera.isOpen == false 
+        
+        if(!camera.IsOpen()){
+            
+            if(!camera.Open()){
+                Message* msgCameraFailOpen = new Message(MessageID::MESSAGE_CAM_FAIL);
+                WriteInQueue(&q_messageToMon, msgCameraFailOpen);
+            }
+        }
+        else{
+            
+            Img img = camera.Grab() ; 
+            MessageImg* msgImg = new MessageImg(MessageID::MESSAGE_CAM_IMAGE, img) ; 
+            WriteInQueue(&q_messageToMon, msgImg);
+            
         }
     }
 }
