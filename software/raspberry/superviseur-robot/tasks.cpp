@@ -408,7 +408,6 @@ void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
 void Tasks::GetBatteryLevel(void *arg)
 {
     int rs;
-    int cpMove;
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     
@@ -432,7 +431,7 @@ void Tasks::GetBatteryLevel(void *arg)
             Message* battery_level = robot.Write(new Message(MessageID::MESSAGE_ROBOT_BATTERY_GET));
             if (battery_level->CompareID(MessageID::MESSAGE_ROBOT_BATTERY_LEVEL)) 
             {
-                monitor.Write(battery_level);
+                WriteInQueue(&q_messageToMon,battery_level);
             }
             
         
