@@ -450,7 +450,7 @@ void Tasks::Reload(void *arg)
     {
         rt_task_wait_period(NULL);
         rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-        Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_PING)));
+        Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_RELOAD_WD)));
         rt_mutex_release(&mutex_robot);
         if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
             rt_mutex_acquire(&mutex_counter, TM_INFINITE);
