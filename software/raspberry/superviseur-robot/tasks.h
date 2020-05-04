@@ -83,6 +83,7 @@ private:
     RT_TASK th_move;
     RT_TASK th_battery;
     RT_TASK th_vision;
+    RT_TASK th_reset;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -157,6 +158,8 @@ private:
      * @brief Thread managing all things vision 
      */
     void VisionTask(void *arg);
+    
+    void ResetOnComLost(void *arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
