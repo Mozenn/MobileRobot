@@ -28,6 +28,7 @@
 #define PRIORITY_TCAMERA 21
 #define PRIORITY_BATTERY 40
 #define PRIORITY_VISION 20
+#define PRIORITY_RESET 99  
 
 /*
  * Some remarks:
@@ -137,6 +138,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_vision, "th_reset", 0, PRIORITY_RESET, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -186,6 +191,10 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_vision, (void(*)(void*)) & Tasks::VisionTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_reset, (void(*)(void*)) & Tasks::ResetOnComLost, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -522,6 +531,8 @@ void Tasks::VisionTask(void *arg)
     
     while (1) {
         
+        rt_task_wait_period(NULL);
+        
         bool openCamera ; 
         
         rt_mutex_acquire(&mutex_cameraOpen, TM_INFINITE);
@@ -545,6 +556,52 @@ void Tasks::VisionTask(void *arg)
             Img img = camera.Grab() ; 
             MessageImg* msgImg = new MessageImg(MessageID::MESSAGE_CAM_IMAGE, img) ; 
             WriteInQueue(&q_messageToMon, msgImg);
+            
+        }
+    }
+}
+
+void Tasks::ResetOnComLost(void *arg){
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    
+    while(1){ // mutex_work , is_working
+        
+        rt_task_wait_period(NULL);
+        
+        bool mustReset = false ; 
+        
+        rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+        mustReset = counter >= 3 ; 
+        rt_mutex_release(&mutex_counter); 
+        
+        if(mustReset){
+            
+            rt_mutex_acquire(&mutex_work, TM_INFINITE);
+            is_working = false ; 
+            rt_mutex_release(&mutex_work); 
+            
+            rt_mutex_acquire(&mutex_watchdog, TM_INFINITE);
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+            
+            robotStarted = 0;
+            move = MESSAGE_ROBOT_STOP;
+            counter = 0;
+            watchdog = false ;
+            
+            
+            rt_mutex_release(&mutex_watchdog); 
+            rt_mutex_release(&mutex_robotStarted); 
+            rt_mutex_release(&mutex_counter); 
+            
+            rt_sem_v(&sem_startRobot);
+            rt_sem_v(&sem_openComRobot) ; 
+            rt_sem_v(&sem_startRobot) ; 
             
         }
     }
