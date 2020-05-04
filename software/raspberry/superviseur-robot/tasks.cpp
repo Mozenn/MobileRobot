@@ -652,13 +652,16 @@ void Tasks::ResetOnComLost(void *arg){
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             rt_mutex_acquire(&mutex_counter, TM_INFINITE);
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             
+            robot.Close(); 
             robotStarted = 0;
             move = MESSAGE_ROBOT_STOP;
             counter = 0;
             watchdog = false ;
             
             
+            rt_mutex_release(&mutex_robot);
             rt_mutex_release(&mutex_watchdog); 
             rt_mutex_release(&mutex_robotStarted); 
             rt_mutex_release(&mutex_counter); 
