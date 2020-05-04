@@ -406,7 +406,7 @@ void Tasks::StartWithWD(void* arg) {
     while (1) {
 
         Message * msgSend;
-        rt_sem_p(&sem_startRobot, TM_INFINITE);
+        rt_sem_p(&sem_startRobotWD, TM_INFINITE);
         cout << "Start robot with watchdog (";
         rt_mutex_acquire(&mutex_robot, TM_INFINITE);
         msgSend = robot.Write(robot.StartWithWD());
@@ -666,7 +666,7 @@ void Tasks::ResetOnComLost(void *arg){
             
             rt_sem_v(&sem_startRobot);
             rt_sem_v(&sem_openComRobot) ; 
-            rt_sem_v(&sem_startRobot) ; 
+            rt_sem_v(&sem_startRobotWD) ; 
             
         }
     }
