@@ -68,6 +68,7 @@ private:
     int move = MESSAGE_ROBOT_STOP;
     bool cameraOpen = 0 ; 
     int counter = 0;
+    bool is_working = false;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -90,6 +91,7 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_cameraOpen;
     RT_MUTEX mutex_counter;
+    RT_MUTEX mutex_work;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -139,11 +141,6 @@ private:
     void MoveTask(void *arg);
     
     /**
-     * @brief Thread getting battery level
-     */
-    void GetBatteryLevel(void *arg);
-    
-        /**
      * @brief Thread getting battery level
      */
     void GetBatteryLevel(void *arg);

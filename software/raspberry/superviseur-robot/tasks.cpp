@@ -374,6 +374,9 @@ void Tasks::StartRobotTask(void *arg) {
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             robotStarted = 1;
             rt_mutex_release(&mutex_robotStarted);
+            rt_mutex_acquire(&mutex_work,TM_INFINITE);
+            is_working = true;
+            rt_mutex_release(&mutex_work);
         }
     }
 }
@@ -395,35 +398,35 @@ void Tasks::MoveTask(void *arg) {
     rt_task_set_periodic(NULL, TM_NOW, 100000000);
 
     while (1) {
-        rt_task_wait_period(NULL);
-        cout << "Periodic movement update";
-        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
-        rs = robotStarted;
-        rt_mutex_release(&mutex_robotStarted);
-        if (rs == 1) {
-            rt_mutex_acquire(&mutex_move, TM_INFINITE);
-            cpMove = move;
-            rt_mutex_release(&mutex_move);
-            
-            cout << " move: " << cpMove;
-            
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            Message * check_error = robot.Write(new Message((MessageID)cpMove));
-            if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+        if (is_working) {
+            rt_task_wait_period(NULL);
+            cout << "Periodic movement update";
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            rs = robotStarted;
+            rt_mutex_release(&mutex_robotStarted);
+            if (rs == 1) {
+                rt_mutex_acquire(&mutex_move, TM_INFINITE);
+                cpMove = move;
+                rt_mutex_release(&mutex_move);
+
+                cout << " move: " << cpMove;
+
+                rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+                Message * check_error = robot.Write(new Message((MessageID)cpMove));
                 rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-                counter++;
-                rt_mutex_release(&mutex_counter);
-            }
-            else {
-                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-                if (counter > 0) {
-                    counter--;
+                if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                    counter++;
+                }
+                else {
+                    if (counter > 0) {
+                        counter--;
+                    }
                 }
                 rt_mutex_release(&mutex_counter);
+                rt_mutex_release(&mutex_robot);
             }
-            rt_mutex_release(&mutex_robot);
+            cout << endl << flush;
         }
-        cout << endl << flush;
     }
 }
 
@@ -446,21 +449,20 @@ void Tasks::Reload(void *arg)
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
     rt_task_set_periodic(NULL, TM_NOW, 1000000000);
-    while(1)
-    {
-        rt_task_wait_period(NULL);
-        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-        Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_RELOAD_WD)));
-        rt_mutex_release(&mutex_robot);
-        if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+    while(1) {
+        if (is_working) {
+            rt_task_wait_period(NULL);
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_RELOAD_WD)));
+            rt_mutex_release(&mutex_robot);
             rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-            counter++;
-            rt_mutex_release(&mutex_counter);
-        }
-        else {
-            rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-            if (counter > 0) {
-                counter--;
+            if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                counter++;
+            }
+            else {
+                if (counter > 0) {
+                    counter--;
+                } 
             }
             rt_mutex_release(&mutex_counter);
         }
@@ -481,32 +483,34 @@ void Tasks::GetBatteryLevel(void *arg)
     
     rt_task_set_periodic(NULL, TM_NOW, 500000000);
     while (1) {
-        cout << "1";
-        rt_task_wait_period(NULL);
-        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
-        rs = robotStarted;
-        
-        rt_mutex_release(&mutex_robotStarted);
-        if (rs == 1) {
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-        
-            Message* battery_level = robot.Write(new Message(MessageID::MESSAGE_ROBOT_BATTERY_GET));
-            if (battery_level->CompareID(MessageID::MESSAGE_ROBOT_BATTERY_LEVEL)) 
-            {
-                WriteInQueue(&q_messageToMon,battery_level);
-                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-                if (counter > 0) {
-                    counter--;
+        if (is_working) {
+            cout << "1";
+            rt_task_wait_period(NULL);
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            rs = robotStarted;
+
+            rt_mutex_release(&mutex_robotStarted);
+            if (rs == 1) {
+                rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+
+                Message* battery_level = robot.Write(new Message(MessageID::MESSAGE_ROBOT_BATTERY_GET));
+                if (battery_level->CompareID(MessageID::MESSAGE_ROBOT_BATTERY_LEVEL)) 
+                {
+                    WriteInQueue(&q_messageToMon,battery_level);
+                    rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                    if (counter > 0) {
+                        counter--;
+                    }
+                    rt_mutex_release(&mutex_counter);
                 }
-                rt_mutex_release(&mutex_counter);
+                else if (battery_level->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || battery_level->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                    rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                    counter++;
+                    rt_mutex_release(&mutex_counter);
+                }
+
+                rt_mutex_release(&mutex_robot);
             }
-            else if (battery_level->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || battery_level->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
-                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-                counter++;
-                rt_mutex_release(&mutex_counter);
-            }
-            
-            rt_mutex_release(&mutex_robot);
         }
     }
 }
@@ -543,7 +547,7 @@ void Tasks::VisionTask(void *arg)
         else{
             
             Img img = camera.Grab() ; 
-            MessageImg* msgImg = new MessageImg(MessageID::MESSAGE_CAM_IMAGE, img) ; 
+            MessageImg* msgImg = new MessageImg(MessageID::MESSAGE_CAM_IMAGE, &img) ; 
             WriteInQueue(&q_messageToMon, msgImg);
             
         }
