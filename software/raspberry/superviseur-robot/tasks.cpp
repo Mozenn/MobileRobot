@@ -80,7 +80,23 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    cout << "Mutexes created successfully" << endl << flush;
+    if (err = rt_mutex_create(&mutex_counter, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_work, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_watchdog, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_mutex_create(&mutex_reset, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    cout << "Mutexes created successfully" << endl << flush; 
 
     /**************************************************************************************/
     /* 	Semaphors creation       							  */
@@ -101,7 +117,15 @@ void Tasks::Init() {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    cout << "Semaphores created successfully" << endl << flush;
+    if (err = rt_sem_create(&sem_startRobotWD, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_sem_create(&sem_comOn, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    cout << "Semaphores created successfully" << endl << flush; 
 
     /**************************************************************************************/
     /* Tasks creation                                                                     */
@@ -134,11 +158,11 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_vision, "th_vision", 0, PRIORITY_VISION, 0)) {
+    if (err = rt_task_create(&th_reset, "th_reset", 0, PRIORITY_RESET, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_create(&th_vision, "th_reset", 0, PRIORITY_RESET, 0)) {
+    if (err = rt_task_create(&th_startRobotWD, "th_startRobotWD", 0, PRIORITY_TSTARTROBOT, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -182,7 +206,7 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_startRobotWD, (void(*)(void*)) & Tasks::StartRobotTask, this)){
+    if (err = rt_task_start(&th_startRobotWD, (void(*)(void*)) & Tasks::StartWithWD, this)){
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -191,10 +215,6 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_battery, (void(*)(void*)) & Tasks::GetBatteryLevel, this)) {
-        cerr << "Error task start: " << strerror(-err) << endl << flush;
-        exit(EXIT_FAILURE);
-    }
-    if (err = rt_task_start(&th_vision, (void(*)(void*)) & Tasks::VisionTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -322,8 +342,12 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_cameraOpen, TM_INFINITE);
             cameraOpen = false ; 
             rt_mutex_release(&mutex_cameraOpen);
+        }else if(msgRcv->CompareID(MESSAGE_ROBOT_RESET)){
+            rt_mutex_acquire(&mutex_reset, TM_INFINITE);
+            reset = true ; 
+            rt_mutex_release(&mutex_reset);
         }
-        delete(msgRcv); // mus be deleted manually, no consumer
+        delete(msgRcv); // mus be deleted manually, no consumer 
     }
 }
 
@@ -357,6 +381,8 @@ void Tasks::OpenComRobot(void *arg) {
             msgSend = new Message(MESSAGE_ANSWER_ACK);
         }
         WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon
+        
+        rt_sem_v(&sem_comOn);
     }
 }
 
@@ -375,6 +401,7 @@ void Tasks::StartRobotTask(void *arg) {
 
         Message * msgSend;
         rt_sem_p(&sem_startRobot, TM_INFINITE);
+        rt_sem_p(&sem_comOn, TM_INFINITE);
         cout << "Start robot without watchdog (";
         rt_mutex_acquire(&mutex_robot, TM_INFINITE);
         msgSend = robot.Write(robot.StartWithoutWD());
@@ -407,6 +434,7 @@ void Tasks::StartWithWD(void* arg) {
 
         Message * msgSend;
         rt_sem_p(&sem_startRobotWD, TM_INFINITE);
+        rt_sem_p(&sem_comOn, TM_INFINITE);
         cout << "Start robot with watchdog (";
         rt_mutex_acquire(&mutex_robot, TM_INFINITE);
         msgSend = robot.Write(robot.StartWithWD());
@@ -501,6 +529,8 @@ void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
 
 void Tasks::Reload(void *arg)
 {
+    int rs;
+    
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
@@ -508,23 +538,34 @@ void Tasks::Reload(void *arg)
     while(1) {
         if (is_working) {
             rt_task_wait_period(NULL);
-            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_RELOAD_WD)));
-            rt_mutex_release(&mutex_robot);
-            rt_mutex_acquire(&mutex_watchdog,TM_INFINITE);
-            if (watchdog) {
-                rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-                if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
-                    counter++;
+            
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            rs = robotStarted;
+            rt_mutex_release(&mutex_robotStarted);
+            
+            if(rs == 1){
+                rt_mutex_acquire(&mutex_watchdog,TM_INFINITE);
+                if (watchdog) {
+                    
+                    rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+                    Message * check_error = robot.Write(new Message((MessageID::MESSAGE_ROBOT_RELOAD_WD)));
+                    rt_mutex_release(&mutex_robot);
+                    
+                    rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+                    if (check_error->CompareID(MessageID::MESSAGE_ANSWER_COM_ERROR) || check_error->CompareID(MessageID::MESSAGE_ANSWER_ROBOT_TIMEOUT)) {
+                        counter++;
+                    }
+                    else {
+                        if (counter > 0) {
+                            counter--;
+                        } 
+                    }
+                    rt_mutex_release(&mutex_counter);
                 }
-                else {
-                    if (counter > 0) {
-                        counter--;
-                    } 
-                }
-                rt_mutex_release(&mutex_counter);
+                rt_mutex_release(&mutex_watchdog);
             }
-            rt_mutex_release(&mutex_watchdog);
+            
+
         }
     }
 }
@@ -583,6 +624,7 @@ void Tasks::GetBatteryLevel(void *arg)
     }
 }
 
+/*
 void Tasks::VisionTask(void *arg)
 {
     Camera camera ; 
@@ -622,7 +664,7 @@ void Tasks::VisionTask(void *arg)
             
         }
     }
-}
+}*/
 
 void Tasks::ResetOnComLost(void *arg){
     
@@ -638,38 +680,60 @@ void Tasks::ResetOnComLost(void *arg){
         
         bool mustReset = false ; 
         
+        cout << "BEFORE MUSTRESET  " << endl << flush;
+        
         rt_mutex_acquire(&mutex_counter, TM_INFINITE);
-        mustReset = counter >= 3 ; 
+        rt_mutex_acquire(&mutex_reset, TM_INFINITE);
+            
+        mustReset = counter >= 3 || reset ; 
+        
         rt_mutex_release(&mutex_counter); 
+        rt_mutex_release(&mutex_reset);
+        
+        cout << "BEFORE IF " << endl << flush;
         
         if(mustReset){
+            
+            cout << "AFTER IF " << endl << flush;
             
             rt_mutex_acquire(&mutex_work, TM_INFINITE);
             is_working = false ; 
             rt_mutex_release(&mutex_work); 
             
-            rt_mutex_acquire(&mutex_watchdog, TM_INFINITE);
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             rt_mutex_acquire(&mutex_counter, TM_INFINITE);
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            rt_mutex_acquire(&mutex_reset, TM_INFINITE);
             
             robot.Close(); 
             robotStarted = 0;
             move = MESSAGE_ROBOT_STOP;
             counter = 0;
-            watchdog = false ;
+            reset = false ; 
             
             
             rt_mutex_release(&mutex_robot);
-            rt_mutex_release(&mutex_watchdog); 
             rt_mutex_release(&mutex_robotStarted); 
             rt_mutex_release(&mutex_counter); 
             rt_mutex_release(&mutex_move); 
+            rt_mutex_release(&mutex_reset); 
             
-            rt_sem_v(&sem_startRobot);
+            rt_mutex_acquire(&mutex_watchdog, TM_INFINITE);
+            
             rt_sem_v(&sem_openComRobot) ; 
-            rt_sem_v(&sem_startRobotWD) ; 
+            
+            if(watchdog){
+                rt_sem_v(&sem_startRobotWD) ; 
+            }
+            else{
+                rt_sem_v(&sem_startRobot);
+            }
+            
+            rt_mutex_release(&mutex_watchdog); 
+            
+            
+            
             
         }
     }

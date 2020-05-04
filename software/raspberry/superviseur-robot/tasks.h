@@ -70,6 +70,7 @@ private:
     int counter = 0;
     bool is_working = false;
     bool watchdog = false;
+    bool reset = false ;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -96,6 +97,7 @@ private:
     RT_MUTEX mutex_counter;
     RT_MUTEX mutex_work;
     RT_MUTEX mutex_watchdog;
+    RT_MUTEX mutex_reset;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -105,6 +107,7 @@ private:
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
     RT_SEM sem_startRobotWD;
+    RT_SEM sem_comOn;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -156,10 +159,8 @@ private:
     void GetBatteryLevel(void *arg);
     
             /**
-     * @brief Thread managing all things vision 
+     * @brief Thread resetting on com lost 
      */
-    void VisionTask(void *arg);
-    
     void ResetOnComLost(void *arg);
     
     /**********************************************************************/
