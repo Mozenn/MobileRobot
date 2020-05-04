@@ -301,6 +301,8 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_sem_v(&sem_openComRobot);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_START_WITHOUT_WD)) {
             rt_sem_v(&sem_startRobot);
+        } else if (msgRcv -> CompareID(MESSAGE_ROBOT_START_WITH_WD)) {
+            rt_sem_v(&sem_startRobotWD);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_GO_FORWARD) ||
                 msgRcv->CompareID(MESSAGE_ROBOT_GO_BACKWARD) ||
                 msgRcv->CompareID(MESSAGE_ROBOT_GO_LEFT) ||
@@ -649,6 +651,7 @@ void Tasks::ResetOnComLost(void *arg){
             rt_mutex_acquire(&mutex_watchdog, TM_INFINITE);
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             rt_mutex_acquire(&mutex_counter, TM_INFINITE);
+            rt_mutex_acquire(&mutex_move, TM_INFINITE);
             
             robotStarted = 0;
             move = MESSAGE_ROBOT_STOP;
@@ -659,6 +662,7 @@ void Tasks::ResetOnComLost(void *arg){
             rt_mutex_release(&mutex_watchdog); 
             rt_mutex_release(&mutex_robotStarted); 
             rt_mutex_release(&mutex_counter); 
+            rt_mutex_release(&mutex_move); 
             
             rt_sem_v(&sem_startRobot);
             rt_sem_v(&sem_openComRobot) ; 
