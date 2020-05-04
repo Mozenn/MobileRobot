@@ -177,7 +177,11 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-   if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
+    if (err = rt_task_start(&th_startrobotWD, (void(*)(void*)) & Tasks::StartRobotTask, this)){
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -376,6 +380,41 @@ void Tasks::StartRobotTask(void *arg) {
             rt_mutex_release(&mutex_robotStarted);
         }
     }
+}
+
+void Tasks::StartWithWD(void* arg)
+{
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    while (1) {
+
+        Message * msgSend;
+        rt_sem_p(&sem_startRobot, TM_INFINITE);
+        cout << "Start robot with watchdog (";
+        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+        msgSend = robot.Write(robot.StartWithWD());
+        rt_mutex_release(&mutex_robot);
+        cout << msgSend->GetID();
+        cout << ")" << endl;
+        
+        cout << "Movement answer: " << msgSend->ToString() << endl << flush;
+        WriteInQueue(&q_messageToMon, msgSend);// msgSend will be deleted by sendToMon
+        
+        rt_mutex_acquire(&mutex_watchdog, TM_INFINITE);
+        watchdog = true;
+        rt_mutex_release(&mutex_watchdog);
+        
+        if (msgSend->GetID() == MESSAGE_ANSWER_ACK) {
+            rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+            robotStarted = 1;
+            rt_mutex_acquire(&mutex_work,TM_INFINITE);
+            is_working = true;
+            rt_mutex_release(&mutex_work,TM_INFINITE);
+            rt_mutex_release(&mutex_robotStarted);
+            
+        }
 }
 
 /**

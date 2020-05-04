@@ -68,6 +68,7 @@ private:
     int move = MESSAGE_ROBOT_STOP;
     bool cameraOpen = 0 ; 
     int counter = 0;
+    bool watchdog = false;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -77,6 +78,7 @@ private:
     RT_TASK th_receiveFromMon;
     RT_TASK th_openComRobot;
     RT_TASK th_startRobot;
+    RT_TASK th_startRobotWD;
     RT_TASK th_move;
     RT_TASK th_battery;
     RT_TASK th_vision;
@@ -90,6 +92,7 @@ private:
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_cameraOpen;
     RT_MUTEX mutex_counter;
+    RT_MUTEX mutex_watchdog;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -132,6 +135,11 @@ private:
      * @brief Thread starting the communication with the robot.
      */
     void StartRobotTask(void *arg);
+    
+    /**
+     * @brief Thread starting the communication with the robot with a watchdog.
+     */
+    void StartWithWD(void *arg);
     
     /**
      * @brief Thread handling control of the robot.
