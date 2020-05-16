@@ -66,7 +66,6 @@ private:
     ComRobot robot;
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
-    bool cameraOpen = 0 ; 
     int counter = 0;
     bool is_working = false;
     bool watchdog = false;
@@ -83,7 +82,7 @@ private:
     RT_TASK th_startRobotWD;
     RT_TASK th_move;
     RT_TASK th_battery;
-    RT_TASK th_vision;
+    RT_TASK th_reload;
     RT_TASK th_reset;
     
     /**********************************************************************/
@@ -93,7 +92,6 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
-    RT_MUTEX mutex_cameraOpen;
     RT_MUTEX mutex_counter;
     RT_MUTEX mutex_work;
     RT_MUTEX mutex_watchdog;
@@ -163,6 +161,11 @@ private:
      */
     void ResetOnComLost(void *arg);
     
+        /**
+     * @brief Ping the robot to check com
+     */
+    void Reload(void *arg);
+    
     /**********************************************************************/
     /* Queue services                                                     */
     /**********************************************************************/
@@ -172,11 +175,6 @@ private:
      * @param msg Message to be stored
      */
     void WriteInQueue(RT_QUEUE *queue, Message *msg);
-    
-    /**
-     * @brief Ping the robot to check com
-     */
-    void Reload(void *arg);
     
     /**
      * Read a message from a given queue, block if empty
