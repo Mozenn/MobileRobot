@@ -67,9 +67,10 @@ private:
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
     int counter = 0;
-    bool is_working = false;
+    bool monitorComOn = false ;
     bool watchdog = false;
-    bool reset = false ;
+    bool resetRobot = false ;
+    bool resetMonitor = false ; 
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -83,7 +84,8 @@ private:
     RT_TASK th_move;
     RT_TASK th_battery;
     RT_TASK th_reload;
-    RT_TASK th_reset;
+    RT_TASK th_resetRobot;
+    RT_TASK th_resetMonitor;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -93,19 +95,21 @@ private:
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_counter;
-    RT_MUTEX mutex_work;
+    RT_MUTEX mutex_monitorComOn;
     RT_MUTEX mutex_watchdog;
-    RT_MUTEX mutex_reset;
+    RT_MUTEX mutex_resetRobot;
+    RT_MUTEX mutex_resetMonitor;
 
     /**********************************************************************/
     /* Semaphores                                                         */
     /**********************************************************************/
     RT_SEM sem_barrier;
     RT_SEM sem_openComRobot;
+    RT_SEM sem_restartServer;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
     RT_SEM sem_startRobotWD;
-    RT_SEM sem_comOn;
+    RT_SEM sem_comRobotOn;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -157,14 +161,19 @@ private:
     void GetBatteryLevel(void *arg);
     
             /**
-     * @brief Thread resetting on com lost 
+     * @brief Thread resetting Robot Com 
      */
-    void ResetOnComLost(void *arg);
+    void ResetRobotOnComLost(void *arg);
     
         /**
      * @brief Ping the robot to check com
      */
     void Reload(void *arg);
+    
+                /**
+     * @brief Thread resetting Monitor Com 
+     */
+    void ResetMonitorCom(void *arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
