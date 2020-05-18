@@ -65,6 +65,7 @@ private:
     ComMonitor monitor;
     ComRobot robot;
     int robotStarted = 0;
+    bool robotComOn = false ; 
     int move = MESSAGE_ROBOT_STOP;
     int counter = 0;
     bool monitorComOn = false ;
@@ -93,6 +94,7 @@ private:
     RT_MUTEX mutex_monitor;
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
+    RT_MUTEX mutex_robotComOn;
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_counter;
     RT_MUTEX mutex_monitorComOn;
